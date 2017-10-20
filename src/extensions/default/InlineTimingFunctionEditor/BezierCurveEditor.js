@@ -1,45 +1,40 @@
 /*
- * Copyright (c) 2013 Adobe Systems Incorporated. All rights reserved.
- *  
+ * Copyright (c) 2013 - present Adobe Systems Incorporated. All rights reserved.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"), 
- * to deal in the Software without restriction, including without limitation 
- * the rights to use, copy, modify, merge, publish, distribute, sublicense, 
- * and/or sell copies of the Software, and to permit persons to whom the 
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- *  
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *  
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
- * 
+ *
  */
-
-/*jslint vars: true, plusplus: true, nomen: true, regexp: true, maxerr: 50 */
-/*global define, brackets, $, window, Mustache */
 
 define(function (require, exports, module) {
     "use strict";
-    
-    var EditorManager   = brackets.getModule("editor/EditorManager"),
-        KeyEvent        = brackets.getModule("utils/KeyEvent"),
-        Strings         = brackets.getModule("strings");
 
-    var TimingFunctionUtils            = require("TimingFunctionUtils"),
-        InlineTimingFunctionEditor     = require("InlineTimingFunctionEditor").InlineTimingFunctionEditor;
-    
+    var KeyEvent        = brackets.getModule("utils/KeyEvent"),
+        Strings         = brackets.getModule("strings"),
+        Mustache        = brackets.getModule("thirdparty/mustache/mustache");
+
+    var TimingFunctionUtils = require("TimingFunctionUtils");
+
     /** Mustache template that forms the bare DOM structure of the UI */
-    var BezierCurveEditorTemplate   = require("text!BezierCurveEditorTemplate.html");
-    
+    var BezierCurveEditorTemplate = require("text!BezierCurveEditorTemplate.html");
+
     /** @const @type {number} */
-    var STEP_MULTIPLIER =   5,
-        HEIGHT_ABOVE    =  75,    // extra height above main grid
+    var HEIGHT_ABOVE    =  75,    // extra height above main grid
         HEIGHT_BELOW    =  75,    // extra height below main grid
         HEIGHT_MAIN     = 150,    // height of main grid
         WIDTH_MAIN      = 150;    // width of main grid
@@ -73,7 +68,7 @@ define(function (require, exports, module) {
             }
         }
     }
-    
+
     /**
      * BezierCanvas object constructor
      *
@@ -134,9 +129,7 @@ define(function (require, exports, module) {
         offsetsToCoordinates: function (element) {
             var p = this.padding,
                 w = this.canvas.width,
-                h = this.canvas.height * 0.5,
-                x,
-                y;
+                h = this.canvas.height * 0.5;
 
             // Convert padding percentage to actual padding
             p = p.map(function (a, i) {
@@ -160,11 +153,11 @@ define(function (require, exports, module) {
                 setting;
 
             var defaultSettings = {
-                handleTimingFunction: "#1461FC",
+                handleTimingFunction: "#2893ef",
                 handleThickness: 0.008,
                 vBorderThickness: 0.02,
                 hBorderThickness: 0.01,
-                bezierTimingFunction: "#1461FC",
+                bezierTimingFunction: "#2893ef",
                 bezierThickness: 0.03
             };
 
@@ -240,7 +233,7 @@ define(function (require, exports, module) {
     };
 
     // Event handlers
-    
+
     /**
      * Handle click in <canvas> element
      *
@@ -305,7 +298,7 @@ define(function (require, exports, module) {
             bezierEditor._commitTimingFunction();
 
             bezierEditor._updateCanvas();
-            animationRequest = window.webkitRequestAnimationFrame(mouseMoveRedraw);
+            animationRequest = window.requestAnimationFrame(mouseMoveRedraw);
         }
 
         // This is a dragging state, but left button is no longer down, so mouse
@@ -336,7 +329,7 @@ define(function (require, exports, module) {
             .concat(bezierEditor.bezierCanvas.offsetsToCoordinates(bezierEditor.P2));
 
         if (!animationRequest) {
-            animationRequest = window.webkitRequestAnimationFrame(mouseMoveRedraw);
+            animationRequest = window.requestAnimationFrame(mouseMoveRedraw);
         }
     }
 
@@ -523,20 +516,21 @@ define(function (require, exports, module) {
         // Create the DOM structure, filling in localized strings via Mustache
         this.$element = $(Mustache.render(BezierCurveEditorTemplate, Strings));
         $parent.append(this.$element);
-        
+
         this._callback = callback;
         this.dragElement = null;
 
         // current cubic-bezier() function params
         this._cubicBezierCoords = this._getCubicBezierCoords(bezierCurve);
 
-        this.hint = $(".hint", this.$element);
+        this.hint = {};
+        this.hint.elem = $(".hint", this.$element);
         // If function was auto-corrected, then originalString holds the original function,
         // and an informational message needs to be shown
         if (bezierCurve.originalString) {
-            TimingFunctionUtils.showHideHint(this, true, bezierCurve.originalString, "cubic-bezier(" + this._cubicBezierCoords.join(", ") + ")");
+            TimingFunctionUtils.showHideHint(this.hint, true, bezierCurve.originalString, "cubic-bezier(" + this._cubicBezierCoords.join(", ") + ")");
         } else {
-            TimingFunctionUtils.showHideHint(this, false);
+            TimingFunctionUtils.showHideHint(this.hint, false);
         }
 
         this.P1 = this.$element.find(".P1")[0];
@@ -546,7 +540,7 @@ define(function (require, exports, module) {
         this.P1.bezierEditor = this.P2.bezierEditor = this.curve.bezierEditor = this;
 
         this.bezierCanvas = new BezierCanvas(this.curve, null, [0, 0]);
-        
+
         // redraw canvas
         this._updateCanvas();
 
@@ -611,7 +605,7 @@ define(function (require, exports, module) {
             this._cubicBezierCoords[2] + ", " +
             this._cubicBezierCoords[3] + ")";
         this._callback(bezierCurveVal);
-        TimingFunctionUtils.showHideHint(this, false);
+        TimingFunctionUtils.showHideHint(this.hint, false);
     };
 
     /**
@@ -685,7 +679,7 @@ define(function (require, exports, module) {
             this.bezierCanvas.plot();
         }
     };
-    
+
     /**
      * Handle external update
      *
@@ -697,12 +691,12 @@ define(function (require, exports, module) {
         // If function was auto-corrected, then originalString holds the original function,
         // and an informational message needs to be shown
         if (bezierCurve.originalString) {
-            TimingFunctionUtils.showHideHint(this, true, bezierCurve.originalString, "cubic-bezier(" + this._cubicBezierCoords.join(", ") + ")");
+            TimingFunctionUtils.showHideHint(this.hint, true, bezierCurve.originalString, "cubic-bezier(" + this._cubicBezierCoords.join(", ") + ")");
         } else {
-            TimingFunctionUtils.showHideHint(this, false);
+            TimingFunctionUtils.showHideHint(this.hint, false);
         }
     };
 
-    
+
     exports.BezierCurveEditor = BezierCurveEditor;
 });

@@ -1,39 +1,38 @@
 /*
- * Copyright (c) 2013 Adobe Systems Incorporated. All rights reserved.
- *  
+ * Copyright (c) 2013 - present Adobe Systems Incorporated. All rights reserved.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"), 
- * to deal in the Software without restriction, including without limitation 
- * the rights to use, copy, modify, merge, publish, distribute, sublicense, 
- * and/or sell copies of the Software, and to permit persons to whom the 
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- *  
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *  
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
- * 
+ *
  */
 
-/*jslint vars: true, plusplus: true, devel: true, nomen: true, regexp: true, indent: 4, maxerr: 50 */
-/*global define, brackets */
+/*jslint regexp: true */
 
 /**
  *  Utilities functions related to color matching
  */
 define(function (require, exports, module) {
     "use strict";
-    
+
     var Strings         = brackets.getModule("strings"),
         StringUtils     = brackets.getModule("utils/StringUtils"),
         AnimationUtils  = brackets.getModule("utils/AnimationUtils");
-    
+
     /**
      * Regular expressions for matching timing functions
      * @const @type {RegExp}
@@ -42,7 +41,7 @@ define(function (require, exports, module) {
         BEZIER_CURVE_GENERAL_REGEX      = /cubic-bezier\((.*)\)/,
         EASE_STRICT_REGEX               = /[: ,]ease(?:-in)?(?:-out)?[ ,;]/,
         EASE_LAX_REGEX                  = /ease(?:-in)?(?:-out)?/,
-        LINEAR_STRICT_REGEX             = /transition.*?[: ,]linear[ ,;]/,
+        LINEAR_STRICT_REGEX             = /(transition|animation).*?[: ,]linear[ ,;]/,
         LINEAR_LAX_REGEX                = /linear/,
         STEPS_VALID_REGEX               = /steps\(\s*(\d+)\s*(?:,\s*(\w+)\s*)?\)/,
         STEPS_GENERAL_REGEX             = /steps\((.*)\)/,
@@ -60,15 +59,15 @@ define(function (require, exports, module) {
      * If string is a number, then convert it.
      *
      * @param {string} str  value parsed from page.
-     * @return { isNumber: boolean, value: number } 
+     * @return { isNumber: boolean, value: ?number }
      */
     function _convertToNumber(str) {
-        if (typeof (str) !== "string") {
-            return { isNumber: false };
+        if (typeof str !== "string") {
+            return { isNumber: false, value: null };
         }
 
-        var val = parseFloat(str, 10),
-            isNum = (typeof (val) === "number") && !isNaN(val) &&
+        var val = parseFloat(+str, 10),
+            isNum = (typeof val === "number") && !isNaN(val) &&
                     (val !== Infinity) && (val !== -Infinity);
 
         return {
@@ -94,7 +93,7 @@ define(function (require, exports, module) {
         if (match) {
             match = match[1].split(",");
         }
-        
+
         if (match) {
             for (i = 0; i <= 3; i++) {
                 if (match[i]) {
@@ -173,8 +172,7 @@ define(function (require, exports, module) {
             def = [ "5", "end" ],
             params = def,
             oldIndex = match.index, // we need to store the old match.index to re-set the index afterwards
-            originalString = match[0],
-            i;
+            originalString = match[0];
 
         if (match) {
             match = match[1].split(",");
@@ -244,32 +242,38 @@ define(function (require, exports, module) {
 
         return true;
     }
-    
+
     /**
      * Show, hide or update the hint text
-     * 
-     * @param {(BezierCurveEditor|StepEditor)} editor BezierCurveEditor or StepsEditor where the hint should be changed
+     *
+     * @param {object} hint Editor.hint object of the current InlineTimingFunctionEditor
      * @param {boolean} show Whether the hint should be shown or hidden
      * @param {string=} documentCode The invalid code from the document (can be omitted when hiding)
      * @param {string=} editorCode The valid code that is shown in the Inline Editor (can be omitted when hiding)
      */
-    function showHideHint(editor, show, documentCode, editorCode) {
-        if (!editor.hint) {
+    function showHideHint(hint, show, documentCode, editorCode) {
+        if (!hint || !hint.elem) {
             return;
         }
-        
+
         if (show) {
-            editor.hintShown = true;
-            editor.hint.html(StringUtils.format(Strings.INLINE_TIMING_EDITOR_INVALID, documentCode, editorCode));
-            editor.hint.css("display", "block");
-        } else if (editor.hintShown) {
-            AnimationUtils.animateUsingClass(editor.hint[0], "fadeout")
+            hint.shown = true;
+            hint.animationInProgress = false;
+            hint.elem.removeClass("fadeout");
+            hint.elem.html(StringUtils.format(Strings.INLINE_TIMING_EDITOR_INVALID, documentCode, editorCode));
+            hint.elem.css("display", "block");
+        } else if (hint.shown) {
+            hint.animationInProgress = true;
+            AnimationUtils.animateUsingClass(hint.elem[0], "fadeout", 750)
                 .done(function () {
-                    editor.hint.css("display", "none");
-                    editor.hintShown = false;
+                    if (hint.animationInProgress) { // do this only if the animation was not cancelled
+                        hint.elem.hide();
+                    }
+                    hint.shown = false;
+                    hint.animationInProgress = false;
                 });
         } else {
-            editor.hint.css("display", "none");
+            hint.elem.hide();
         }
     }
 
@@ -290,7 +294,7 @@ define(function (require, exports, module) {
             match.isStep = true;
             break;
         }
-        
+
         return match;
     }
 
@@ -352,7 +356,7 @@ define(function (require, exports, module) {
             }
         } else {
             // The linear keyword can occur in other values, so for strict parsing we
-            // only detect when it's on same line as "transition"
+            // only detect when it's on same line as "transition" or "animation"
             match = str.match(LINEAR_STRICT_REGEX);
             if (match) {
                 // return exact match to keyword that we need for later replacement

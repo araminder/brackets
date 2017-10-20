@@ -1,49 +1,41 @@
 /*
- * Copyright (c) 2013 Adobe Systems Incorporated. All rights reserved.
- *  
+ * Copyright (c) 2013 - present Adobe Systems Incorporated. All rights reserved.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"), 
- * to deal in the Software without restriction, including without limitation 
- * the rights to use, copy, modify, merge, publish, distribute, sublicense, 
- * and/or sell copies of the Software, and to permit persons to whom the 
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- *  
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- *  
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
- * 
+ *
  */
-
-/*jslint vars: true, plusplus: true, nomen: true, regexp: true, maxerr: 50 */
-/*global define, brackets, $, window, Mustache */
 
 define(function (require, exports, module) {
     "use strict";
-    
-    var EditorManager   = brackets.getModule("editor/EditorManager"),
-        KeyEvent        = brackets.getModule("utils/KeyEvent"),
-        Strings         = brackets.getModule("strings");
 
-    var TimingFunctionUtils            = require("TimingFunctionUtils"),
-        InlineTimingFunctionEditor     = require("InlineTimingFunctionEditor").InlineTimingFunctionEditor;
-    
+    var KeyEvent    = brackets.getModule("utils/KeyEvent"),
+        Strings     = brackets.getModule("strings"),
+        Mustache    = brackets.getModule("thirdparty/mustache/mustache");
+
+    var TimingFunctionUtils = require("TimingFunctionUtils");
+
     /** Mustache template that forms the bare DOM structure of the UI */
     var StepEditorTemplate   = require("text!StepEditorTemplate.html");
-    
-    /** @const @type {number} */
-    var STEP_LINE       =   1,
-        DASH_LINE       =   2,
-        HEIGHT_MAIN     = 150,    // height of main grid
-        WIDTH_MAIN      = 150;    // width of main grid
 
-    var animationRequest = null;
+    /** @const @type {number} */
+    var STEP_LINE   = 1,
+        DASH_LINE   = 2;
 
     /**
      * StepParameters object constructor
@@ -59,7 +51,7 @@ define(function (require, exports, module) {
         this.count  = params.count;
         this.timing = params.timing;
     }
-    
+
     /**
      * StepCanvas object constructor
      *
@@ -170,9 +162,9 @@ define(function (require, exports, module) {
                 p = [];
 
             var defaultSettings = {
-                bgColor:        "#fff",
+                bgColor:        "transparent",
                 borderColor:    "#bbb",
-                stepColor:      "#1461fc",
+                stepColor:      "#2893ef",
                 dashColor:      "#b8b8b8",
                 borderWidth:    0.00667,
                 stepLineWidth:  0.02,
@@ -244,7 +236,7 @@ define(function (require, exports, module) {
     };
 
     // Event handlers
-    
+
     /**
      * Handle key down in <canvas> element
      *
@@ -304,19 +296,20 @@ define(function (require, exports, module) {
         // Create the DOM structure, filling in localized strings via Mustache
         this.$element = $(Mustache.render(StepEditorTemplate, Strings));
         $parent.append(this.$element);
-        
+
         this._callback = callback;
 
         // current step function params
         this._stepParams = this._getStepParams(stepMatch);
 
-        this.hint = $(".hint", this.$element);
+        this.hint = {};
+        this.hint.elem = $(".hint", this.$element);
         // If function was auto-corrected, then originalString holds the original function,
         // and an informational message needs to be shown
         if (stepMatch.originalString) {
-            TimingFunctionUtils.showHideHint(this, true, stepMatch.originalString, "steps(" + this._stepParams.count.toString() + ", " + this._stepParams.timing + ")");
+            TimingFunctionUtils.showHideHint(this.hint, true, stepMatch.originalString, "steps(" + this._stepParams.count.toString() + ", " + this._stepParams.timing + ")");
         } else {
-            TimingFunctionUtils.showHideHint(this, false);
+            TimingFunctionUtils.showHideHint(this.hint, false);
         }
 
         this.canvas = this.$element.find(".steps")[0];
@@ -327,7 +320,7 @@ define(function (require, exports, module) {
         // Note that this is rendered inside canvas CSS "content"
         // (i.e. this does not map to CSS padding)
         this.stepCanvas = new StepCanvas(this.canvas, null, [0.1]);
-      
+
         // redraw canvas
         this._updateCanvas();
 
@@ -364,7 +357,7 @@ define(function (require, exports, module) {
             this._stepParams.count.toString() + ", " +
             this._stepParams.timing + ")";
         this._callback(stepFuncVal);
-        TimingFunctionUtils.showHideHint(this, false);
+        TimingFunctionUtils.showHideHint(this.hint, false);
     };
 
     /**
@@ -424,7 +417,7 @@ define(function (require, exports, module) {
             this.stepCanvas.plot();
         }
     };
-    
+
     /**
      * Handle external update
      *
@@ -436,12 +429,12 @@ define(function (require, exports, module) {
         // If function was auto-corrected, then originalString holds the original function,
         // and an informational message needs to be shown
         if (stepMatch.originalString) {
-            TimingFunctionUtils.showHideHint(this, true, stepMatch.originalString, "steps(" + this._stepParams.count.toString() + ", " + this._stepParams.timing + ")");
+            TimingFunctionUtils.showHideHint(this.hint, true, stepMatch.originalString, "steps(" + this._stepParams.count.toString() + ", " + this._stepParams.timing + ")");
         } else {
-            TimingFunctionUtils.showHideHint(this, false);
+            TimingFunctionUtils.showHideHint(this.hint, false);
         }
     };
 
-    
+
     exports.StepEditor = StepEditor;
 });

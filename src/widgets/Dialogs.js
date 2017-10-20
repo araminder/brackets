@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Adobe Systems Incorporated. All rights reserved.
+ * Copyright (c) 2012 - present Adobe Systems Incorporated. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,24 +21,20 @@
  *
  */
 
-
-/*jslint vars: true, plusplus: true, devel: true, nomen: true, indent: 4, maxerr: 50 */
-/*global define, $, brackets, window, Mustache */
-
 /**
  * Utilities for creating and managing standard modal dialogs.
  */
 define(function (require, exports, module) {
     "use strict";
-    
+
     require("utils/Global");
 
     var KeyBindingManager = require("command/KeyBindingManager"),
         KeyEvent          = require("utils/KeyEvent"),
-        NativeApp         = require("utils/NativeApp"),
         Strings           = require("strings"),
-        DialogTemplate    = require("text!htmlContent/dialog-template.html");
-    
+        DialogTemplate    = require("text!htmlContent/dialog-template.html"),
+        Mustache          = require("thirdparty/mustache/mustache");
+
     /**
      * Dialog Buttons IDs
      * @const {string}
@@ -49,7 +45,7 @@ define(function (require, exports, module) {
         DIALOG_BTN_SAVE_AS          = "save_as",
         DIALOG_CANCELED             = "_canceled",
         DIALOG_BTN_DOWNLOAD         = "download";
-    
+
     /**
      * Dialog Buttons Class Names
      * @const {string}
@@ -57,8 +53,11 @@ define(function (require, exports, module) {
     var DIALOG_BTN_CLASS_PRIMARY    = "primary",
         DIALOG_BTN_CLASS_NORMAL     = "",
         DIALOG_BTN_CLASS_LEFT       = "left";
-    
-    /** @type {number} The z-index used for the dialogs. Each new dialog increase this number by 2 */
+
+    /**
+     * The z-index used for the dialogs. Each new dialog increase this number by 2
+     * @type {number}
+     */
     var zIndex = 1050;
 
     /**
@@ -71,7 +70,7 @@ define(function (require, exports, module) {
         $dlg.data("buttonId", buttonId);
         $dlg.modal("hide");
     }
-    
+
     /**
      * @private
      * If autoDismiss is true, then dismisses the dialog. Otherwise just raises an event that the
@@ -109,22 +108,27 @@ define(function (require, exports, module) {
     function _handleTab(event, $dlg) {
         var $inputs = $(":input:enabled, a", $dlg).filter(":visible");
 
+        function stopEvent() {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+
         if ($(event.target).closest($dlg).length) {
             // If it's the first or last tabbable element, focus the last/first element
             if ((!event.shiftKey && event.target === $inputs[$inputs.length - 1]) ||
                     (event.shiftKey && event.target === $inputs[0])) {
                 $inputs.filter(event.shiftKey ? ":last" : ":first").focus();
-                event.preventDefault();
+                stopEvent();
 
             // If there is no element to focus, don't let it focus outside of the dialog
             } else if (!$inputs.length) {
-                event.preventDefault();
+                stopEvent();
             }
 
         // If the focus left the dialog, focus the first element in the dialog
         } else {
             $inputs.first().focus();
-            event.preventDefault();
+            stopEvent();
         }
     }
 
@@ -140,24 +144,42 @@ define(function (require, exports, module) {
             buttonId        = null,
             which           = String.fromCharCode(e.which),
             $focusedElement = this.find(".dialog-button:focus, a:focus");
-        
+
+        function stopEvent() {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
         // There might be a textfield in the dialog's UI; don't want to mistake normal typing for dialog dismissal
         var inTextArea    = (e.target.tagName === "TEXTAREA"),
             inTypingField = inTextArea || ($(e.target).filter(":text, :password").length > 0);
-        
+
         if (e.which === KeyEvent.DOM_VK_TAB) {
+            // We don't want to stopEvent() in this case since we might want the default behavior.
+            // _handleTab takes care of stopping/preventing default as necessary.
             _handleTab(e, this);
         } else if (e.which === KeyEvent.DOM_VK_ESCAPE) {
             buttonId = DIALOG_BTN_CANCEL;
-        } else if (e.which === KeyEvent.DOM_VK_RETURN && !inTextArea) {  // enter key in single-line text input still dismisses
+        } else if (e.which === KeyEvent.DOM_VK_RETURN && (!inTextArea || e.ctrlKey)) {
+            // Enter key in single-line text input always dismisses; in text area, only Ctrl+Enter dismisses
             // Click primary
-            $primaryBtn.click();
+            stopEvent();
+            if (e.target.tagName === "BUTTON") {
+                this.find(e.target).click();
+            } else if (e.target.tagName !== "INPUT") {
+                // If the target element is not BUTTON or INPUT, click the primary button
+                // We're making an exception for INPUT element because of this issue: GH-11416
+                $primaryBtn.click();
+            }
         } else if (e.which === KeyEvent.DOM_VK_SPACE) {
-            // Space bar on focused button or link
-            $focusedElement.click();
+            if ($focusedElement.length) {
+                // Space bar on focused button or link
+                stopEvent();
+                $focusedElement.click();
+            }
         } else if (brackets.platform === "mac") {
-            // CMD+D Don't Save
-            if (e.metaKey && (which === "D")) {
+            // CMD+Backspace Don't Save
+            if (e.metaKey && (e.which === KeyEvent.DOM_VK_BACK_SPACE)) {
                 if (_hasButton(this, DIALOG_BTN_DONTSAVE)) {
                     buttonId = DIALOG_BTN_DONTSAVE;
                 }
@@ -173,18 +195,19 @@ define(function (require, exports, module) {
                 }
             }
         }
-        
+
         if (buttonId) {
+            stopEvent();
             _processButton(this, buttonId, autoDismiss);
         }
-        
+
         // Stop any other global hooks from processing the event (but
         // allow it to continue bubbling if we haven't otherwise stopped it).
         return true;
     };
-    
-    
-    
+
+
+
     /**
      * @constructor
      * @private
@@ -197,17 +220,23 @@ define(function (require, exports, module) {
         this._$dlg    = $dlg;
         this._promise = promise;
     }
-    
-    /** @type {$.Element} The dialog jQuery element */
+
+    /**
+     * The dialog jQuery element
+     * @type {$.Element}
+     */
     Dialog.prototype.getElement = function () {
         return this._$dlg;
     };
-    
-    /** @type {$.Promise} The dialog promise */
+
+    /**
+     * The dialog promise
+     * @type {$.Promise}
+     */
     Dialog.prototype.getPromise = function () {
         return this._promise;
     };
-    
+
     /**
      * Closes the dialog if is visible
      */
@@ -216,14 +245,14 @@ define(function (require, exports, module) {
             _dismissDialog(this._$dlg, DIALOG_CANCELED);
         }
     };
-    
+
     /**
      * Adds a done callback to the dialog promise
      */
     Dialog.prototype.done = function (callback) {
         this._promise.done(callback);
     };
-    
+
 
     /**
      * Don't allow dialog to exceed viewport size
@@ -244,7 +273,7 @@ define(function (require, exports, module) {
             });
         }
     }
-    
+
     /**
      * Creates a new modal dialog from a given template.
      * The template can either be a string or a jQuery object representing a DOM node that is *not* in the current DOM.
@@ -259,18 +288,18 @@ define(function (require, exports, module) {
         if (autoDismiss === undefined) {
             autoDismiss = true;
         }
-        
+
         $("body").append("<div class='modal-wrapper'><div class='modal-inner-wrapper'></div></div>");
 
-        var result    = $.Deferred(),
-            promise   = result.promise(),
-            $dlg      = $(template)
+        var result  = new $.Deferred(),
+            promise = result.promise(),
+            $dlg    = $(template)
                 .addClass("instance")
                 .appendTo(".modal-inner-wrapper:last");
 
         // Don't allow dialog to exceed viewport size
         setDialogMaxSize();
-        
+
         // Save the dialog promise for unit tests
         $dlg.data("promise", promise);
 
@@ -278,48 +307,59 @@ define(function (require, exports, module) {
             return _keydownHook.call($dlg, e, autoDismiss);
         };
 
+        // Store current focus
+        var lastFocus = window.document.activeElement;
+
         // Pipe dialog-closing notification back to client code
         $dlg.one("hidden", function () {
             var buttonId = $dlg.data("buttonId");
             if (!buttonId) {    // buttonId will be undefined if closed via Bootstrap's "x" button
                 buttonId = DIALOG_BTN_CANCEL;
             }
-            
+
             // Let call stack return before notifying that dialog has closed; this avoids issue #191
             // if the handler we're triggering might show another dialog (as long as there's no
             // fade-out animation)
             window.setTimeout(function () {
                 result.resolve(buttonId);
             }, 0);
-            
+
             // Remove the dialog instance from the DOM.
             $dlg.remove();
-            $(".modal-backdrop:last").addClass("last-backdrop");
 
             // Remove our global keydown handler.
             KeyBindingManager.removeGlobalKeydownHook(keydownHook);
-            
+
+            // Restore previous focus
+            if (lastFocus) {
+                lastFocus.focus();    
+            }
+
             //Remove wrapper
             $(".modal-wrapper:last").remove();
         }).one("shown", function () {
-            // Set focus to the default button
-            var primaryBtn = $dlg.find(".primary");
+            var $primaryBtn = $dlg.find(".primary:enabled"),
+                $otherBtn   = $dlg.find(".modal-footer .dialog-button:enabled:eq(0)");
 
-            if (primaryBtn) {
-                primaryBtn.focus();
+            // Set focus to the primary button, to any other button, or to the dialog depending
+            // if there are buttons
+            if ($primaryBtn.length) {
+                $primaryBtn.focus();
+            } else if ($otherBtn.length) {
+                $otherBtn.focus();
+            } else {
+                window.document.activeElement.blur();
             }
 
             // Push our global keydown handler onto the global stack of handlers.
             KeyBindingManager.addGlobalKeydownHook(keydownHook);
         });
-        
+
         // Click handler for buttons
         $dlg.one("click", ".dialog-button", function (e) {
             _processButton($dlg, $(this).attr("data-button-id"), autoDismiss);
         });
-        
-        $(".last-backdrop").removeClass("last-backdrop");
-        
+
         // Run the dialog
         $dlg
             .modal({
@@ -331,15 +371,14 @@ define(function (require, exports, module) {
             // Updates the z-index of the modal dialog and the backdrop
             .css("z-index", zIndex + 1)
             .next()
-            .css("z-index", zIndex)
-            .addClass("last-backdrop");
-        
+            .css("z-index", zIndex);
+
         zIndex += 2;
-        
+
         return (new Dialog($dlg, promise));
     }
-    
-    
+
+
     /**
      * Creates a new general purpose modal dialog using the default template and the template variables given
      * as parameters as described.
@@ -363,10 +402,10 @@ define(function (require, exports, module) {
             buttons:  buttons || [{ className: DIALOG_BTN_CLASS_PRIMARY, id: DIALOG_BTN_OK, text: Strings.OK }]
         };
         var template = Mustache.render(DialogTemplate, templateVars);
-        
+
         return showModalDialogUsingTemplate(template, autoDismiss);
     }
-    
+
     /**
      * Immediately closes any dialog instances with the given class. The dialog callback for each instance will
      * be called with the special buttonId DIALOG_CANCELED (note: callback is run asynchronously).
@@ -380,21 +419,42 @@ define(function (require, exports, module) {
             }
         });
     }
-    
+
+    /**
+     * Ensures that all <a> tags with a URL have a tooltip showing the same URL
+     * @param {!jQueryObject|Dialog} elementOrDialog  Dialog intance, or root of other DOM tree to add tooltips to
+     */
+    function addLinkTooltips(elementOrDialog) {
+        var $element;
+        if (elementOrDialog.getElement) {
+            $element = elementOrDialog.getElement().find(".dialog-message");
+        } else {
+            $element = elementOrDialog;
+        }
+        $element.find("a").each(function (index, elem) {
+            var $elem = $(elem);
+            var url = $elem.attr("href");
+            if (url && url !== "#" && !$elem.attr("title")) {
+                $elem.attr("title", url);
+            }
+        });
+    }
+
     window.addEventListener("resize", setDialogMaxSize);
-    
+
     exports.DIALOG_BTN_CANCEL            = DIALOG_BTN_CANCEL;
     exports.DIALOG_BTN_OK                = DIALOG_BTN_OK;
     exports.DIALOG_BTN_DONTSAVE          = DIALOG_BTN_DONTSAVE;
     exports.DIALOG_BTN_SAVE_AS           = DIALOG_BTN_SAVE_AS;
     exports.DIALOG_CANCELED              = DIALOG_CANCELED;
     exports.DIALOG_BTN_DOWNLOAD          = DIALOG_BTN_DOWNLOAD;
-    
+
     exports.DIALOG_BTN_CLASS_PRIMARY     = DIALOG_BTN_CLASS_PRIMARY;
     exports.DIALOG_BTN_CLASS_NORMAL      = DIALOG_BTN_CLASS_NORMAL;
     exports.DIALOG_BTN_CLASS_LEFT        = DIALOG_BTN_CLASS_LEFT;
-    
+
     exports.showModalDialog              = showModalDialog;
     exports.showModalDialogUsingTemplate = showModalDialogUsingTemplate;
     exports.cancelModalDialogIfOpen      = cancelModalDialogIfOpen;
+    exports.addLinkTooltips              = addLinkTooltips;
 });
